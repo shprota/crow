@@ -1,0 +1,22 @@
+Metadata-Version: 1.1
+Name: crow
+Version: 0.1
+Summary: Crow security system interface
+Home-page: http://github.com/shprota/crow
+Author: Shprota
+Author-email: shprota@gmail.com
+License: MIT
+Description: UNKNOWN
+Keywords: alarm security crow
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.2
+Classifier: Programming Language :: Python :: 3.3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
