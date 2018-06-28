@@ -2,6 +2,7 @@ import requests
 
 from . import urls
 import logging
+import json
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,7 +50,10 @@ class Panel(object):
         return self._session.get_zones(self.id)
 
     def get_outputs(self):
-        return []
+        return self._session.get_outputs(self.id)
+
+    def set_output_state(self, output_id, state):
+        self._session.set_output_state(self, output_id, state)
 
     def get_areas(self):
         return self._session.get_areas(self.id)
@@ -77,7 +81,8 @@ class Session(object):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.logout()
+        # self.logout()
+        pass
 
     def _get(self, url, params=None, retry=True):
         try:
@@ -86,7 +91,6 @@ class Session(object):
                 'Authorization': self._token
             }
             response = requests.get(url, params=params, headers=_headers)
-            # _LOGGER.debug("Get %s: %d - %s", url, response.status_code, response.json())
             if response.status_code == 401:
                 if retry:
                     self.login(True)
@@ -96,7 +100,7 @@ class Session(object):
             raise RequestError(ex)
         return response.json()
 
-    def _patch(self, url, data=None, headers=None, retry=True):
+    def _patch(self, url, retry=True, headers=None, **kwargs):
         try:
             _headers = {
                 'Accept': 'application/json, text/javascript, */*; q=0.01',
@@ -105,11 +109,11 @@ class Session(object):
             if headers:
                 _headers.update(headers)
 
-            response = requests.patch(url, data=data, headers=_headers)
+            response = requests.patch(url, headers=_headers, **kwargs)
             if response.status_code == 401:
                 if retry:
                     self.login(True)
-                    return self._patch(url, data, headers, retry=False)
+                    return self._patch(url, headers=_headers, retry=False, **kwargs)
             _validate_response(response)
         except requests.exceptions.RequestException as ex:
             raise RequestError(ex)
@@ -148,6 +152,18 @@ class Session(object):
     def get_zones(self, panel_id):
         return self._get(urls.zones(panel_id))
 
+    def get_outputs(self, panel_id):
+        return self._get(urls.outputs(panel_id))
+
+    def set_output_state(self, panel, output_id, state):
+        return self._patch(urls.output(panel.id, output_id),
+                           json={"state": state},
+                           headers={
+                               "X-Crow-CP-Remote": panel.remote_access_password,
+                               "X-Crow-CP-User": panel.user_code,
+                           })
+
+
     def get_areas(self, panel_id):
         return self._get(urls.areas(panel_id))
 
@@ -156,7 +172,7 @@ class Session(object):
 
     def set_area_state(self, panel, area_id, state):
         return self._patch(urls.area(panel.id, area_id),
-                           data={"state": state, "force": False},
+                           json={"state": state, "force": False},
                            headers={
                                "X-Crow-CP-Remote": panel.remote_access_password,
                                "X-Crow-CP-User": panel.user_code

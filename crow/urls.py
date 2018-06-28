@@ -48,6 +48,12 @@ def panel(mac):
 def zones(panel_id):
     return '{base_url}/panels/{panel_id}/zones/'.format(base_url=BASE_URL, panel_id=panel_id)
 
+def outputs(panel_id):
+    return '{base_url}/panels/{panel_id}/outputs/'.format(base_url=BASE_URL, panel_id=panel_id)
+
+def output(panel_id, output_id):
+    return '{base_url}/panels/{panel_id}/outputs/{output_id}/'.format(base_url=BASE_URL, panel_id=panel_id, output_id=output_id)
+
 
 def zone(panel_id, zone_id):
     return '{base_url}/panels/{panel_id}/zones/{zone_id}/'.format(base_url=BASE_URL, panel_id=panel_id, zone_id=zone_id)
