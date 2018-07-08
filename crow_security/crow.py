@@ -1,3 +1,4 @@
+import aiohttp
 import requests
 
 from . import urls
@@ -15,7 +16,11 @@ class RequestError(Error):
     pass
 
 
-class LoginError(Error):
+class CrowLoginError(Error):
+    pass
+
+
+class CrowWsError(Error):
     pass
 
 
@@ -67,14 +72,20 @@ class Panel(object):
     def get_measurements(self):
         return self._session.get_measurements(self.id)
 
+    def get_pictures(self, zone_id, page_size=1, page=1):
+        return self._session.get_pictures(self.id, zone_id, page_size, page)
+
 
 class Session(object):
 
     def __init__(self, email, password):
         self._email = email
         self._password = password
+        self._raw_token = None
         self._token = None
         self._refresh_token = None
+        self._ws_connection = None
+        self.aio_session = None
 
     def __enter__(self):
         self.login()
@@ -134,7 +145,8 @@ class Session(object):
         except requests.exceptions.RequestException as ex:
             raise RequestError(ex)
         data = response.json()
-        self._token = data.get('token_type') + ' ' + data.get('access_token')
+        self._raw_token = data.get('access_token')
+        self._token = data.get('token_type') + ' ' + self._raw_token
         self._refresh_token = data.get('refresh_token', self._refresh_token)
 
 
@@ -180,3 +192,52 @@ class Session(object):
 
     def get_measurements(self, panel_id):
         return self._get(urls.measurements(panel_id))
+
+    def get_pictures(self, panel_id, zone_id, page_size=1, page=1):
+        return self._get(urls.pictures(panel_id, zone_id, page_size, page)).get('results')
+
+    def download_picture(self, picture, file_name):
+        url = picture.get("url")
+        try:
+            response = requests.get(url, stream=True)
+        except requests.exceptions.RequestException as ex:
+            raise RequestError(ex)
+        _validate_response(response)
+        with open(file_name, 'wb') as image_file:
+            for chunk in response.iter_content(chunk_size=1024):
+                if chunk:
+                    image_file.write(chunk)
+
+    async def ws_connect(self, panel, datacb):
+        self.aio_session = aiohttp.ClientSession()
+        self._ws_connection = await self.aio_session.ws_connect(urls.ws())
+        await self._ws_connection.send_json({'type': 'authentication', 'value': self._raw_token})
+        msg = await self._ws_connection.receive()
+        msg = json.loads(msg.data)
+        if msg['status'] == 'OK':
+            print('authenticated succesfully')
+        else:
+            raise CrowLoginError('Authentication error: {}'.format(msg['description']))
+        await self._ws_connection.send_json({'type': 'subscribe', 'value': panel})
+        msg = await self._ws_connection.receive()
+        msg = json.loads(msg.data)
+        if msg['status'] == 'OK':
+            print('Subscribed on event for panel {}'.format(panel))
+        else:
+            raise CrowWsError('Subscription error: {}'.format(msg['description']))
+
+        async for msg in self._ws_connection:
+            print('Received message:', msg.type)
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                data = json.loads(msg.data)
+                await datacb(data)
+            if msg.type in (aiohttp.WSMsgType.CLOSED,
+                            aiohttp.WSMsgType.ERROR):
+                break
+
+    async def ws_close(self):
+        if not self._ws_connection:
+            return
+        await self._ws_connection.close()
+        self._ws_connection = None
+        await self.aio_session.close()

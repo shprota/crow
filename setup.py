@@ -1,6 +1,6 @@
 from setuptools import setup
 
-setup(name='crow',
+setup(name='crow_security',
       version='0.1',
       description='Crow security system interface',
       url='http://github.com/shprota/crow',
@@ -21,7 +21,7 @@ setup(name='crow',
           'Programming Language :: Python :: 3.7',
       ],
       keywords='alarm security crow',
-      packages=['crow'],
+      packages=['crow_security'],
       install_requires=[
-          'requests'],
+          'requests', 'aiohttp'],
       zip_safe=False)

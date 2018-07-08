@@ -7,7 +7,8 @@ __all__ = [
 
 from .crow import ( # NOQA
     Error,
-    LoginError,
+    CrowLoginError,
     ResponseError,
+    CrowWsError,
     Session
 )
