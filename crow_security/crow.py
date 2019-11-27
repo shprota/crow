@@ -102,7 +102,7 @@ class Session(object):
                 'Authorization': self._token
             }
             response = requests.get(url, params=params, headers=_headers)
-            if response.status_code == 401:
+            if response.status_code in (400, 401):
                 if retry:
                     self.login(True)
                     return self._get(url, params, retry=False)
