@@ -121,7 +121,7 @@ class Session(object):
                 _headers.update(headers)
 
             response = requests.patch(url, headers=_headers, **kwargs)
-            if response.status_code == 401:
+            if response.status_code in (400, 401):
                 if retry:
                     self.login(True)
                     return self._patch(url, headers=_headers, retry=False, **kwargs)
