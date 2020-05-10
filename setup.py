@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='crow_security',
-      version='0.2',
+      version='0.2.1',
       description='Crow security system interface',
       url='http://github.com/shprota/crow',
       author='Shprota',
