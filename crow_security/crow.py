@@ -138,8 +138,8 @@ class Session(object):
     def login(self, refresh=False):
         try:
             data = urls.login_data(self._email, self._password)
-            if refresh and self._refresh_token:
-                data = urls.refresh_data(self._refresh_token)
+            # if refresh and self._refresh_token:
+            #    data = urls.refresh_data(self._refresh_token)
             response = requests.post(urls.login(), data=data)
             _validate_response(response)
         except requests.exceptions.RequestException as ex:

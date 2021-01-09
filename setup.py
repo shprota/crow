@@ -1,14 +1,14 @@
 from setuptools import setup
 
 setup(name='crow_security',
-      version='0.2.1',
+      version='0.2.2',
       description='Crow security system interface',
       url='http://github.com/shprota/crow',
       author='Shprota',
       author_email='shprota@gmail.com',
       license='MIT',
       classifiers=[
-          'Development Status :: 3 - Alpha',
+          'Development Status :: 4 - Beta',
           'Intended Audience :: Developers',
           'License :: OSI Approved :: MIT License',
           'Programming Language :: Python :: 2.7',

@@ -24,7 +24,7 @@ if __name__ == '__main__':
         p.pprint(areas)
 
         def on_message(msg):
-            print("Message reveived:")
+            print("Message received:")
             p.pprint(msg)
 
     loop.run_until_complete(session.ws_connect(panel.id, on_message))
