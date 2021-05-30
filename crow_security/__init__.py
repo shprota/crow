@@ -1,14 +1,18 @@
 __all__ = [
     'Error',
-    'LoginError',
+    'CrowLoginError',
+    'RequestError',
     'ResponseError',
-    'Session'
+    'Session',
+    'Panel',
 ]
 
 from .crow import ( # NOQA
     Error,
     CrowLoginError,
     ResponseError,
+    RequestError,
     CrowWsError,
-    Session
+    Session,
+    Panel,
 )

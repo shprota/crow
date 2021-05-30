@@ -1,9 +1,9 @@
 import aiohttp
-import requests
 
 from . import urls
 import logging
 import json
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,18 +35,26 @@ class ResponseError(Error):
         self.text = text
 
 
-def _validate_response(response):
+async def _validate_response(response):
     """ Verify that response is OK """
-    if response.status_code == 200:
+    if response.status < 400:
         return
-    raise ResponseError(response.status_code, response.text)
+    raise ResponseError(response.status, await response.text())
 
 
 class Panel(object):
     def __init__(self, session, mac):
-        self._session = session
-        panel = session._get_panel(mac)
+        self._session: Session = session
+        self.id = None
+        self.mac = mac
+        self.name = None
+
+    @classmethod
+    async def create(cls, session, mac):
+        self = Panel(session, mac)
+        panel = await session.get_panel_data(mac)
         self.__dict__.update(panel)
+        return self
 
     def __str__(self):
         return "{}-{} ({})".format(self.id, self.name, self.mac)
@@ -58,22 +66,28 @@ class Panel(object):
         return self._session.get_outputs(self.id)
 
     def set_output_state(self, output_id, state):
-        self._session.set_output_state(self, output_id, state)
+        return self._session.set_output_state(self, output_id, state)
 
     def get_areas(self):
         return self._session.get_areas(self.id)
 
     def get_area(self, area_id):
-        return  self._session.get_area(self.id, area_id)
+        return self._session.get_area(self.id, area_id)
 
     def set_area_state(self, area_id, state):
-        self._session.set_area_state(self, area_id, state)
+        return self._session.set_area_state(self, area_id, state)
 
     def get_measurements(self):
         return self._session.get_measurements(self.id)
 
     def get_pictures(self, zone_id, page_size=1, page=1):
         return self._session.get_pictures(self.id, zone_id, page_size, page)
+
+    def capture_cam_image(self, zone_id):
+        return self._session.capture_cam_image(self.id, zone_id)
+
+    def ws_connect(self, datacb):
+        return self._session.ws_connect(self, datacb)
 
 
 class Session(object):
@@ -85,71 +99,72 @@ class Session(object):
         self._token = None
         self._refresh_token = None
         self._ws_connection = None
-        self.aio_session = None
+        self.aio_session = aiohttp.ClientSession()
 
-    def __enter__(self):
-        self.login()
+    async def __aenter__(self):
+        await self.login()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # self.logout()
+    def __aexit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def _get(self, url, params=None, retry=True):
-        try:
-            _headers = {
-                'Accept': 'application/json, text/javascript, */*; q=0.01',
-                'Authorization': self._token
-            }
-            response = requests.get(url, params=params, headers=_headers)
-            if response.status_code in (400, 401):
-                if retry:
-                    self.login(True)
-                    return self._get(url, params, retry=False)
-            _validate_response(response)
-        except requests.exceptions.RequestException as ex:
-            raise RequestError(ex)
-        return response.json()
+    async def _get(self, url, params=None, retry=True):
+        if not self._token:
+            await self.login()
+        _headers = {
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Authorization': self._token
+        }
+        async with self.aio_session.get(url, params=params, headers=_headers) as response:
+            if response.status in (400, 401) and retry:
+                await self.login()
+                return self._get(url, params, retry=False)
+            await _validate_response(response)
+            return await response.json()
 
-    def _patch(self, url, retry=True, headers=None, **kwargs):
-        try:
-            _headers = {
-                'Accept': 'application/json, text/javascript, */*; q=0.01',
-                'Authorization': self._token
-            }
-            if headers:
-                _headers.update(headers)
+    async def _patch(self, url, retry=True, headers=None, **kwargs):
+        _headers = {
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Authorization': self._token
+        }
+        if headers:
+            _headers.update(headers)
 
-            response = requests.patch(url, headers=_headers, **kwargs)
-            if response.status_code in (400, 401):
-                if retry:
-                    self.login(True)
-                    return self._patch(url, headers=_headers, retry=False, **kwargs)
-            _validate_response(response)
-        except requests.exceptions.RequestException as ex:
-            raise RequestError(ex)
-        return response.json()
+        async with self.aio_session.patch(url, headers=_headers, **kwargs) as response:
+            # response = requests.patch(url, headers=_headers, **kwargs)
+            if response.status in (400, 401) and retry:
+                await self.login()
+                return self._patch(url, headers=_headers, retry=False, **kwargs)
+            await _validate_response(response)
+            return await response.json()
 
+    async def _post(self, url, retry=True, headers=None, **kwargs):
+        _headers = {
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Authorization': self._token
+        }
+        if headers:
+            _headers.update(headers)
 
+        async with self.aio_session.post(url, headers=_headers, **kwargs) as response:
+            if response.status in (400, 401) and retry:
+                await self.login()
+                return self._post(url, headers=_headers, retry=False, **kwargs)
+            await _validate_response(response)
+            return await response.json()
 
-    def _get_panel(self, mac):
+    def get_panel_data(self, mac):
         return self._get(urls.panel(mac))
 
-    def login(self, refresh=False):
-        try:
-            data = urls.login_data(self._email, self._password)
-            # if refresh and self._refresh_token:
-            #    data = urls.refresh_data(self._refresh_token)
-            response = requests.post(urls.login(), data=data)
-            _validate_response(response)
-        except requests.exceptions.RequestException as ex:
-            raise RequestError(ex)
-        data = response.json()
-        self._raw_token = data.get('access_token')
-        self._token = data.get('token_type') + ' ' + self._raw_token
-        self._refresh_token = data.get('refresh_token', self._refresh_token)
-
-
+    async def login(self):
+        print('Login attempt: %s:%s' % (self._email, self._password))
+        data = urls.login_data(self._email, self._password)
+        async with self.aio_session.post(urls.login(), data=data) as response:
+            await _validate_response(response)
+            data = await response.json()
+            self._raw_token = data.get('access_token')
+            self._token = data.get('token_type') + ' ' + self._raw_token
+            self._refresh_token = data.get('refresh_token', self._refresh_token)
 
     def logout(self):
         self._token = None
@@ -159,7 +174,7 @@ class Session(object):
         return self._get(urls.panels())
 
     def get_panel(self, mac):
-        return Panel(self, mac)
+        return Panel.create(self, mac)
 
     def get_zones(self, panel_id):
         return self._get(urls.zones(panel_id))
@@ -174,7 +189,6 @@ class Session(object):
                                "X-Crow-CP-Remote": panel.remote_access_password,
                                "X-Crow-CP-User": panel.user_code,
                            })
-
 
     def get_areas(self, panel_id):
         return self._get(urls.areas(panel_id))
@@ -193,51 +207,42 @@ class Session(object):
     def get_measurements(self, panel_id):
         return self._get(urls.measurements(panel_id))
 
-    def get_pictures(self, panel_id, zone_id, page_size=1, page=1):
-        return self._get(urls.pictures(panel_id, zone_id, page_size, page)).get('results')
+    async def get_pictures(self, panel_id, zone_id, page_size=1, page=1):
+        resp = await self._get(urls.pictures(panel_id, zone_id, page_size, page))
+        return resp.get('results')
 
-    def download_picture(self, picture, file_name):
+    async def download_picture(self, picture, file_name):
         url = picture.get("url")
-        try:
-            response = requests.get(url, stream=True)
-        except requests.exceptions.RequestException as ex:
-            raise RequestError(ex)
-        _validate_response(response)
-        with open(file_name, 'wb') as image_file:
-            for chunk in response.iter_content(chunk_size=1024):
-                if chunk:
+        async with self.aio_session.get(url) as response:
+            await _validate_response(response)
+            with open(file_name, 'wb') as image_file:
+                while True:
+                    chunk = await response.content.read(1024)
+                    if not chunk:
+                        break
                     image_file.write(chunk)
 
+    async def capture_cam_image(self, panel_id, zone_id):
+        await self._post(urls.take_picture(panel_id, zone_id))
+
     async def ws_connect(self, panel, datacb):
-        self.aio_session = aiohttp.ClientSession()
-        self._ws_connection = await self.aio_session.ws_connect(urls.ws())
-        await self._ws_connection.send_json({'type': 'authentication', 'value': self._raw_token})
-        msg = await self._ws_connection.receive()
-        msg = json.loads(msg.data)
-        if msg['status'] == 'OK':
-            print('authenticated succesfully')
-        else:
-            raise CrowLoginError('Authentication error: {}'.format(msg['description']))
-        await self._ws_connection.send_json({'type': 'subscribe', 'value': panel})
-        msg = await self._ws_connection.receive()
-        msg = json.loads(msg.data)
-        if msg['status'] == 'OK':
-            print('Subscribed on event for panel {}'.format(panel))
-        else:
-            raise CrowWsError('Subscription error: {}'.format(msg['description']))
+        async with self.aio_session.ws_connect(urls.ws()) as ws:
+            await ws.send_json({'type': 'authentication', 'value': self._raw_token})
+            msg = await ws.receive_json()
+            if msg['status'] != 'OK':
+                raise CrowLoginError('Authentication error: {}'.format(msg['description']))
+            await ws.send_json({'type': 'subscribe', 'value': panel})
+            msg: Any = await ws.receive_json()
+            if msg['status'] == 'OK':
+                print('Subscribed on event for panel {}'.format(panel))
+            else:
+                raise CrowWsError('Subscription error: {}'.format(msg['description']))
 
-        async for msg in self._ws_connection:
-            print('Received message:', msg.type)
-            if msg.type == aiohttp.WSMsgType.TEXT:
-                data = json.loads(msg.data)
-                await datacb(data)
-            if msg.type in (aiohttp.WSMsgType.CLOSED,
-                            aiohttp.WSMsgType.ERROR):
-                break
-
-    async def ws_close(self):
-        if not self._ws_connection:
-            return
-        await self._ws_connection.close()
-        self._ws_connection = None
-        await self.aio_session.close()
+            async for msg in ws:
+                # print('Received message:', msg.type, msg.data)
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+                    await datacb(data)
+                if msg.type in (aiohttp.WSMsgType.CLOSED,
+                                aiohttp.WSMsgType.ERROR):
+                    break

@@ -21,4 +21,4 @@ var/
 *.egg
 *.manifest
 *.spec
-
+test.*
